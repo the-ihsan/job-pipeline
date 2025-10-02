@@ -1,0 +1,33 @@
+{
+  "name": "job-pipeline",
+  "version": "1.0.0",
+  "description": "A composable pipeline for jobs",
+  "type": "module",
+  "scripts": {
+    "job": "node --experimental-strip-types cli.ts",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "jobs",
+    "pipeline",
+    "ai",
+    "gemini",
+    "puppeteer"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.19.19",
+    "@typescript-eslint/eslint-plugin": "^6.14.0",
+    "@typescript-eslint/parser": "^6.14.0",
+    "prettier": "^3.6.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "dotenv": "^17.2.3",
+    "open": "^10.2.0",
+    "puppeteer": "^24.23.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}
