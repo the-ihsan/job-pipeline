@@ -4,6 +4,10 @@ export interface JobStep<T, I, R> {
   (data: I, state: T): Promise<R> | R;
 }
 
+export interface JobStepSliced<T, I, R> {
+  (data: I[], startIndex: number, state: T): Promise<R> | R;
+}
+
 export interface JobStepEach<T, I, R> {
   (data: I, state: T, index: number | string): Promise<R> | R;
 }
@@ -25,6 +29,23 @@ export class Job<T> {
 
   pipe<R>(fn: JobStep<T, any, R>) {
     this.steps.push(fn);
+    return this;
+  }
+
+  pipeSliced<R>(fn: JobStepSliced<T, any, R>, sliceSize: number) {
+    this.steps.push(async (data, state) => {
+      if (!data || !Array.isArray(data)) {
+        throw new Error('Data is not an array');
+      }
+      const results = [];
+      for (let i = 0; i < data.length; i += sliceSize) {
+        const result = await fn(data.slice(i, i + sliceSize), i, state);
+        if (result && Array.isArray(result)) {
+          results.push(...result);
+        }
+      }
+      return results;
+    });
     return this;
   }
 
