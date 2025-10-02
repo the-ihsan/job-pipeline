@@ -45,21 +45,17 @@ const init = async ({ browser }: JobState) => {
   return names;
 };
 
-const processNewspapers = async (urls: string[], { browser }: JobState) => {
-  const SLICE_SIZE = 5;
+const processNewspapers = async (urls: string[], _: number, { browser }: JobState) => {
   const results: {
     name: string;
     email: string;
     source: string;
   }[] = [];
-  for (let i = 0; i < urls.length; i += SLICE_SIZE) {
-    const slice = urls.slice(i, i + SLICE_SIZE);
-    const promises: Promise<void>[] = [];
-    slice.forEach(page_link => {
-      promises.push(getNewspaperInfoWithoutEmail(page_link, browser, results));
-    });
-    await Promise.all(promises);
-  }
+  const promises: Promise<void>[] = [];
+  urls.forEach(page_link => {
+    promises.push(getNewspaperInfoWithoutEmail(page_link, browser, results));
+  });
+  await Promise.all(promises);
   return results;
 };
 
@@ -81,7 +77,7 @@ export default async function main() {
     browser,
   };
   await start<JobState>(init, state)
-    .pipe(processNewspapers)
+    .pipeSliced(processNewspapers, 5)
     .saveAs('newspaper-d.json')
     .pipe(findEmail)
     .saveAs('newspaper-with-email-d.csv')
