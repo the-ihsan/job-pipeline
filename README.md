@@ -1,339 +1,112 @@
-# Scraping Pipeline
+# Job Pipeline
 
-A composable, type-safe pipeline for web scraping with Puppeteer and AI-powered data extraction.
+A tiny TypeScript job runner and composable pipeline for scraping/ETL with Puppeteer and optional AI (Gemini).
 
 ## 🎯 Features
 
-- **Pipeline Architecture**: Compose jobs with `start().pipe().pipe().saveAs()`
-- **Type-Safe**: Full TypeScript support with strong typing
-- **Error Handling**: Built-in retry logic and error recovery
-- **Rate Limiting**: Automatic rate limiting for API calls
-- **Modular**: Reusable utilities for common scraping patterns
-- **Easy to Extend**: Add new jobs without touching core code
+- **CLI job runner**: `pnpm job <jobName>` or interactive picker
+- **Composable pipeline**: `start(init, state).pipe(...).saveAs(...).run()`
+- **Built-in CSV/JSON/TXT output** stored per-job under `jobs/<job>/output/`
+- **Gemini client + rate limiting** in `utils/ai.ts` (optional)
 
-## 📁 Project Structure
+## 📦 Requirements
 
-```
-scraping-pipeline/
-├── jobs/
-│   ├── newspaper-scraper/    # Scrape newspaper contact info
-│   └── channel-processor/    # AI-powered data extraction
-├── utils/
-│   ├── pipeline.ts           # Core pipeline implementation
-│   ├── puppeteer.ts          # Puppeteer helpers
-│   ├── ai.ts                 # AI/Gemini utilities
-│   └── file.ts               # File I/O utilities
-├── types/
-│   └── index.ts              # Shared type definitions
-└── output/                   # Job output files
-```
+- Node.js ≥ 22 (uses `--experimental-strip-types`)
+- pnpm ≥ 8
 
-## 🚀 Quick Start
-
-### 1. Install Dependencies
+## 🚀 Quick start
 
 ```bash
 pnpm install
+
+# Run a job directly
+pnpm job newspaper1
+
+# Or pick interactively (shows a numbered list)
+pnpm job
 ```
 
-### 2. Set Environment Variables
+The CLI script is `cli.ts`. When a job runs, the environment variable `JOB_NAME` is set automatically and outputs are written under `jobs/$JOB_NAME/output/`.
 
-Create a `.env` file:
+## 🧰 Available jobs
 
-```bash
-GEMINI_API_KEY=your_api_key_here
+- **newspaper1**: Crawl `allonlinebanglanewspapers.com` to collect newspaper names and details.
+  - Saves: `jobs/newspaper1/output/newspaper-d.json`
+  - Extracts emails with preferences and saves: `jobs/newspaper1/output/newspaper-with-email-d.csv`
+- **search-helper**: Opens Google queries for each scraped name to manually find emails; waits for Enter to continue. Does not write output files.
+- **filter-uniques**: De-duplicates rows by `Email` from `jobs/filter-uniques/data.csv` and saves `jobs/filter-uniques/output/filtered.csv`.
+
+## 🔧 Scripts
+
+- `pnpm job` — run the CLI (`node --experimental-strip-types cli.ts`)
+- `pnpm lint` — TypeScript typecheck only (`tsc --noEmit`)
+
+## 🗂️ Project layout
+
+```
+rough/
+├── cli.ts                  # Job runner (argument or interactive)
+├── jobs/
+│   ├── newspaper1/         # Scraper that saves JSON + CSV
+│   │   ├── index.ts
+│   │   ├── utils.ts
+│   │   └── output/
+│   ├── search-helper/      # Manual assist flow (opens searches)
+│   │   └── index.ts
+│   └── filter-uniques/     # CSV de-dup by Email
+│       ├── data.csv
+│       └── index.ts
+├── utils/
+│   ├── ai.ts               # Gemini client + rate limiter
+│   ├── file.ts             # saveToJSON/CSV/TXT, loadCSV/JSON
+│   ├── job.ts              # Pipeline implementation
+│   └── index.ts            # Public exports + start(), waitForInput()
+└── tsconfig.json
 ```
 
-### 3. Run a Job
+## 🧪 Using the pipeline
 
-```bash
-# Run newspaper scraper
-pnpm newspaper
+Minimal example of a job using the pipeline:
 
-# Run channel processor
-pnpm channels
-```
-
-## 📝 Creating a New Job
-
-Here's a minimal example:
-
-```typescript
+```ts
 // jobs/my-job/index.ts
-import { start } from '../../utils/pipeline.js';
-import { createBrowser } from '../../utils/puppeteer.js';
+import { start } from '../../utils/index.ts';
 
 interface JobState {
-  browser?: Browser;
-  data?: string[];
+  counter: number;
 }
 
-async function initBrowser(state: JobState) {
-  return { ...state, browser: await createBrowser() };
-}
-
-async function scrapeData(state: JobState) {
-  // Your scraping logic here
-  const data = ['result1', 'result2'];
-  return { ...state, data };
-}
-
-export default async function main() {
-  await start<JobState>({})
-    .pipe(initBrowser, 'Initialize Browser')
-    .pipe(scrapeData, 'Scrape Data')
-    .saveAs('output.json');
-}
-
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch(console.error);
-}
-```
-
-Add to `package.json`:
-
-```json
-{
-  "scripts": {
-    "my-job": "tsx jobs/my-job/index.ts"
-  }
-}
-```
-
-## 🔧 Utility Functions
-
-### Pipeline API
-
-```typescript
-import { start } from './utils/pipeline.js';
-
-const result = await start<State>(initialState, {
-  errorHandling: 'retry',  // 'stop' | 'continue' | 'retry'
-  retryAttempts: 3,
-  retryDelay: 1000,
-  verbose: true
-})
-  .pipe(step1)
-  .pipe(step2)
-  .saveAs('output.csv', { format: 'csv' });
-
-// Or run without saving
-const result = await start<State>({})
-  .pipe(step1)
-  .run();
-```
-
-### Puppeteer Utilities
-
-```typescript
-import {
-  createBrowser,
-  extractText,
-  extractAttribute,
-  processBatch,
-  navigateWithRetry
-} from './utils/puppeteer.js';
-
-const browser = await createBrowser({ headless: true });
-const page = await browser.newPage();
-
-await navigateWithRetry(page, 'https://example.com');
-const title = await extractText(page, 'h1');
-const href = await extractAttribute(page, 'a', 'href');
-
-// Process items in batches
-const results = await processBatch(
-  items,
-  async (item) => processItem(item),
-  5  // batch size
-);
-```
-
-### AI Utilities
-
-```typescript
-import {
-  extractStructured,
-  generateContent,
-  createRateLimiter
-} from './utils/ai.js';
-
-// Extract structured data
-const result = await extractStructured<{ name: string, email: string }>(
-  'Contact us at hello@example.com',
-  '{ "name": "string", "email": "string" }'
-);
-
-// Custom rate limiter
-const limiter = createRateLimiter(15, 60000); // 15 req/min
-```
-
-### File Utilities
-
-```typescript
-import {
-  saveToJSON,
-  saveToCSV,
-  loadJSON,
-  fileExists
-} from './utils/file.js';
-
-await saveToJSON(data, 'output/data.json', true);
-await saveToCSV(arrayData, 'output/data.csv');
-
-const loaded = await loadJSON<MyType>('output/data.json');
-```
-
-## 🎨 Best Practices
-
-### 1. **Keep Jobs Self-Contained**
-
-Each job should have its own directory and manage its own state:
-
-```
-jobs/
-├── job1/
-│   ├── index.ts        # Main job logic
-│   ├── types.ts        # Job-specific types (optional)
-│   └── config.ts       # Job config (optional)
-```
-
-### 2. **Use Type-Safe State**
-
-Always define your state interface:
-
-```typescript
-interface JobState {
-  browser?: Browser;
-  data?: MyData[];
-  processed?: ProcessedData[];
-}
-```
-
-### 3. **Handle Errors Gracefully**
-
-Use appropriate error handling strategies:
-
-```typescript
-start<State>({}, {
-  errorHandling: 'retry',  // Retry failed steps
-  retryAttempts: 3,
-  retryDelay: 2000
-})
-```
-
-### 4. **Name Your Steps**
-
-Provide descriptive names for better debugging:
-
-```typescript
-.pipe(initBrowser, 'Initialize Browser')
-.pipe(scrapeData, 'Scrape Product Data')
-.pipe(enrichData, 'Enrich with AI')
-```
-
-### 5. **Batch Processing**
-
-Process large datasets in batches to avoid overwhelming resources:
-
-```typescript
-import { processBatch } from './utils/puppeteer.js';
-
-const results = await processBatch(items, processItem, 10);
-```
-
-## 🔍 Example Jobs
-
-### Newspaper Scraper
-
-Scrapes Bangladesh newspaper websites for contact information:
-
-```bash
-pnpm newspaper
-```
-
-Output: `output/newspapers.csv`
-
-### Channel Processor
-
-Uses AI to extract structured data from text:
-
-```bash
-pnpm channels
-```
-
-Output: `output/channels.csv`
-
-## 🛠️ Advanced Configuration
-
-### Custom Save Options
-
-```typescript
-.saveAs('output.csv', {
-  format: 'csv',        // 'json' | 'csv' | 'txt'
-  outputDir: 'output',
-  prettyPrint: true     // JSON only
-})
-```
-
-### Pipeline Without Saving
-
-```typescript
-const result = await start<State>({})
-  .pipe(step1)
-  .pipe(step2)
-  .run();
-
-if (result.success) {
-  console.log(result.data);
-  console.log(`Completed in ${result.metadata.duration}ms`);
-}
-```
-
-## 📊 Type Safety
-
-All utilities are fully typed:
-
-```typescript
-import type { Step, JobResult, PipelineConfig } from './types/index.js';
-
-const myStep: Step<MyState> = async (state) => {
-  // TypeScript ensures state matches MyState
-  return { ...state, newField: 'value' };
+const init = async ({ counter }: JobState) => {
+  return Array.from({ length: counter }, (_, i) => i + 1);
 };
 
-const result: JobResult<MyState> = await pipeline.run();
+const squareAll = async (nums: number[]) => nums.map(n => n * n);
+
+export default async function main() {
+  await start<JobState>(init, { counter: 5 })
+    .pipe(squareAll)
+    .saveAs('squares.json') // -> jobs/my-job/output/squares.json
+    .run();
+}
 ```
 
-## 🐛 Debugging
+Key helpers:
 
-Enable verbose logging:
+- `pipe(fn)`: pass whole data through a step
+- `pipeSliced(fn, size)`: call a step on array slices (batched)
+- `pipeEach(fn)`: call a step per item, collect results
+- `pipeEachFiltered(fn)`: like `pipeEach` but drops falsy returns
+- `saveAs(filename)`: auto-saves into `jobs/$JOB_NAME/output/`
 
-```typescript
-start<State>({}, { verbose: true })
-```
+## 🔑 Environment variables
 
-Check linter errors:
+- `GEMINI_API_KEY` (optional): required only if your job uses `utils/ai.ts`.
+  - Loaded via `dotenv` if present in a `.env` file at repo root.
 
-```bash
-pnpm lint
-```
+## 📝 Notes
 
-## 📦 Dependencies
-
-- **puppeteer-extra**: Stealth scraping
-- **@google/generative-ai**: Gemini AI integration
-- **dotenv**: Environment variable management
-- **tsx**: Fast TypeScript execution
-
-## 🤝 Contributing
-
-When adding new utilities:
-
-1. Add to appropriate `utils/*.ts` file
-2. Export types from `types/index.ts`
-3. Document in README
-4. Add example usage
+- Puppeteer jobs run headless and include Linux-friendly flags (no-sandbox, etc.).
+- Outputs are created lazily; directories are made if missing.
 
 ## 📄 License
 
