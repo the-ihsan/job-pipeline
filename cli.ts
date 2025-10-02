@@ -61,6 +61,7 @@ async function main() {
     console.error(`❌ Failed to run job "${jobName}":`, err);
     process.exit(1);
   }
+  process.exit(0);
 }
 
 main();
