@@ -29,7 +29,7 @@ const init = async ({ browser }: JobState) => {
   });
 
   await page.evaluate(() => {
-    const main_body = document.querySelector('article')!;
+    const main_body = document.querySelectorAll('article')[3]!;
     const newspapers = main_body.children;
     console.log('Found', newspapers.length, 'newspapers');
 
@@ -82,9 +82,9 @@ export default async function main() {
   };
   await start<JobState>(init, state)
     .pipe(processNewspapers)
-    .saveAs('newspaper.json')
+    .saveAs('newspaper-d.json')
     .pipe(findEmail)
-    .saveAs('newspaper-with-email.csv')
+    .saveAs('newspaper-with-email-d.csv')
     .run();
   await browser.close();
 }

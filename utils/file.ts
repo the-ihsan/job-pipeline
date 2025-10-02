@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-
+import { parseFile, type ParserOptionsArgs } from 'fast-csv';
 
 async function ensureDir(filepath: string) {
   const dir = path.dirname(filepath);
@@ -9,7 +9,7 @@ async function ensureDir(filepath: string) {
 
 const getSavePath = (filename: string) => {
   return path.resolve('jobs', process.env.JOB_NAME || '', 'output', filename);
-}
+};
 
 export async function saveToJSON(
   data: unknown,
@@ -46,7 +46,11 @@ export async function saveToCSV(
       .map(header => {
         const value = String(item[header] ?? '');
         // Escape commas and quotes
-        if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+        if (
+          value.includes(',') ||
+          value.includes('"') ||
+          value.includes('\n')
+        ) {
           return `"${value.replace(/"/g, '""')}"`;
         }
         return value;
@@ -59,24 +63,39 @@ export async function saveToCSV(
   console.log(`✅ Saved ${data.length} records to ${filepath}`);
 }
 
-
 export async function saveToTXT(
   data: unknown,
   filepath: string
 ): Promise<void> {
   filepath = getSavePath(filepath);
   await ensureDir(filepath);
-  const content = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  const content =
+    typeof data === 'string' ? data : JSON.stringify(data, null, 2);
   await fs.writeFile(filepath, content, 'utf8');
   console.log(`✅ Saved to ${filepath}`);
 }
-
 
 export async function loadJSON<T = unknown>(filepath: string): Promise<T> {
   const content = await fs.readFile(filepath, 'utf8');
   return JSON.parse(content);
 }
 
+export function loadCSV<T = unknown>(
+  filepath: string,
+  options: ParserOptionsArgs
+): Promise<T[]> {
+  return new Promise((resolve, reject) => {
+    const rows: T[] = [];
+    parseFile(filepath, options)
+      .on('error', error => reject(error))
+      .on('data', row => {
+        rows.push(row);
+      })
+      .on('end', () => {
+        resolve(rows);
+      });
+  });
+}
 
 export async function fileExists(filepath: string): Promise<boolean> {
   try {
@@ -86,4 +105,3 @@ export async function fileExists(filepath: string): Promise<boolean> {
     return false;
   }
 }
-
