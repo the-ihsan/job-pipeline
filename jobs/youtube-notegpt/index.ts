@@ -30,7 +30,7 @@ async function readLinesFromFile(filePath: string): Promise<string[]> {
 }
 
 async function logFailedLine(line: string, error: Error): Promise<void> {
-  const failedPath = path.resolve('jobs/youtube-subtitle/output/failed.txt');
+  const failedPath = path.resolve('jobs/youtube-notegpt/output/failed.txt');
   await fs.mkdir(path.dirname(failedPath), { recursive: true });
 
   const errorMessage = `Line: "${line}"\nError: ${error.message}\nTimestamp: ${new Date().toISOString()}\n---\n`;
@@ -39,7 +39,7 @@ async function logFailedLine(line: string, error: Error): Promise<void> {
 }
 
 const init = async (_: JobState) => {
-  const inputFilePath = 'jobs/youtube-subtitle/links.txt';
+  const inputFilePath = 'jobs/youtube-notegpt/links.txt';
   try {
     await fs.access(inputFilePath);
   } catch {
@@ -64,6 +64,10 @@ const processLine = async (
   { context }: JobState,
   lineNumber: number | string
 ) => {
+  if (Number(lineNumber) < 4) {
+    return;
+  }
+
   const result: Result = {
     lineNumber,
     content: '',
@@ -135,6 +139,7 @@ const processLine = async (
   if (result.success && result.content) {
     const paddedLineNumber = String(result.lineNumber).padStart(3, '0');
     const outputFilename = `result-${paddedLineNumber}.txt`;
+    result.content = `#${Number(lineNumber)+1}${line}\n${result.content}`;
     await saveToTXT(result.content, outputFilename);
   }
 };
