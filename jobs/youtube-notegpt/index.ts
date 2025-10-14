@@ -3,8 +3,8 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import type { Browser as PlaywrightBrowser, BrowserContext } from 'playwright';
 import fs from 'fs/promises';
-import path from 'path';
-import { saveToTXT } from '../../utils/file.ts';
+import { saveToTXT, getJobFilePath, appendToTXT } from '../../utils/file.ts';
+import clipboard from 'clipboardy';
 
 puppeteer.use(StealthPlugin());
 
@@ -29,17 +29,8 @@ async function readLinesFromFile(filePath: string): Promise<string[]> {
   }
 }
 
-async function logFailedLine(line: string, error: Error): Promise<void> {
-  const failedPath = path.resolve('jobs/youtube-notegpt/output/failed.txt');
-  await fs.mkdir(path.dirname(failedPath), { recursive: true });
-
-  const errorMessage = `Line: "${line}"\nError: ${error.message}\nTimestamp: ${new Date().toISOString()}\n---\n`;
-  await fs.appendFile(failedPath, errorMessage, 'utf8');
-  console.log(`❌ Failed to process line: "${line}" - ${error.message}`);
-}
-
 const init = async (_: JobState) => {
-  const inputFilePath = 'jobs/youtube-notegpt/links.txt';
+  const inputFilePath = getJobFilePath('links.txt');
   try {
     await fs.access(inputFilePath);
   } catch {
@@ -64,15 +55,13 @@ const processLine = async (
   { context }: JobState,
   lineNumber: number | string
 ) => {
-  if (Number(lineNumber) < 4) {
-    return;
-  }
 
   const result: Result = {
     lineNumber,
     content: '',
     success: false,
   };
+  const lineString = `#${Number(lineNumber) + 1}. ${line}`;
 
   try {
     console.log(
@@ -108,16 +97,14 @@ const processLine = async (
         await page.evaluate(tryPasting);
       }
 
-      await waitForInput('Copy and hit enter to continue...');
+      const input = await waitForInput('[s]kip/Save: ');
+      if (input === 'skip' || input === 's') {
+        await appendToTXT(lineString, 'skipped.txt');
+        return;
+      }
+      
 
-      const clipboardContent = await page.evaluate(async () => {
-        try {
-          return await navigator.clipboard.readText();
-        } catch (error) {
-          console.error('Clipboard read error:', error);
-          return '';
-        }
-      });
+      const clipboardContent = clipboard.readSync();
 
       if (!clipboardContent) {
         throw new Error('Failed to read clipboard content');
@@ -131,7 +118,7 @@ const processLine = async (
       await page.close();
     }
   } catch (error) {
-    await logFailedLine(line, error as Error);
+    await appendToTXT(lineString, 'failed.txt');
     result.success = false;
     result.content = '';
   }
@@ -139,7 +126,7 @@ const processLine = async (
   if (result.success && result.content) {
     const paddedLineNumber = String(result.lineNumber).padStart(3, '0');
     const outputFilename = `result-${paddedLineNumber}.txt`;
-    result.content = `#${Number(lineNumber)+1}${line}\n${result.content}`;
+    result.content = `${lineString}\n${result.content}`;
     await saveToTXT(result.content, outputFilename);
   }
 };
