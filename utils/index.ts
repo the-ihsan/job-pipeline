@@ -12,9 +12,9 @@ export const waitForInput = (text: string) => {
       input: process.stdin,
       output: process.stdout,
     });
-    rl.question(text, () => {
+    rl.question(text, (answer) => {
       rl.close();
-      resolve(void 0);
+      resolve(answer);
     });
   });
 };
