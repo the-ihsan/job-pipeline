@@ -1,5 +1,6 @@
 export * from './file.ts';
 export * from './ai.ts';
+export * from './browser.ts';
 
 import readline from 'node:readline';
 import { Job, type JobInit } from './job.ts';
