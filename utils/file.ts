@@ -11,6 +11,11 @@ const getSavePath = (filename: string) => {
   return path.resolve('jobs', process.env.JOB_NAME || '', 'output', filename);
 };
 
+
+export const getJobFilePath = (filename: string) => {
+  return path.resolve('jobs', process.env.JOB_NAME || '', filename);
+};
+
 export async function saveToJSON(
   data: unknown,
   filepath: string,
@@ -73,6 +78,17 @@ export async function saveToTXT(
     typeof data === 'string' ? data : JSON.stringify(data, null, 2);
   await fs.writeFile(filepath, content, 'utf8');
   console.log(`✅ Saved to ${filepath}`);
+}
+
+export async function appendToTXT(
+  data: unknown,
+  filepath: string
+): Promise<void> {
+  filepath = getSavePath(filepath);
+  await ensureDir(filepath);
+  const content = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  await fs.appendFile(filepath, content + '\n', 'utf8');
+  console.log(`✅ Appended to ${filepath}`);
 }
 
 export async function loadJSON<T = unknown>(filepath: string): Promise<T> {
