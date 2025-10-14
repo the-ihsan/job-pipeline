@@ -12,6 +12,10 @@ export interface JobStepEach<T, I, R> {
   (data: I, state: T, index: number | string): Promise<R> | R;
 }
 
+export interface JobStepSort<I> {
+  (a: I, b: I): number;
+}
+
 export interface JobInit<T, R> {
   (state: T): Promise<R> | R;
 }
@@ -29,6 +33,13 @@ export class Job<T> {
 
   pipe<R>(fn: JobStep<T, any, R>) {
     this.steps.push(fn);
+    return this;
+  }
+
+  sort<I>(fn: JobStepSort<I>) {
+    this.steps.push(data => {
+      return data.sort(fn);
+    });
     return this;
   }
 
@@ -75,7 +86,7 @@ export class Job<T> {
   }
 
   saveAs(filename: string) {
-    this.steps.push(async (data) => {
+    this.steps.push(async data => {
       const fileTyp = filename.split('.').pop();
       if (fileTyp === 'csv') {
         await saveToCSV(data, filename);
