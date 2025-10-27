@@ -74,8 +74,14 @@ export async function saveToTXT(
 ): Promise<void> {
   filepath = getSavePath(filepath);
   await ensureDir(filepath);
-  const content =
-    typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  let content = '';
+  if (Array.isArray(data)) {
+    content = data.join('\n');
+  } else if (typeof data === 'string') {
+    content = data;
+  } else {
+    content = JSON.stringify(data, null, 2);
+  }
   await fs.writeFile(filepath, content, 'utf8');
   console.log(`✅ Saved to ${filepath}`);
 }
