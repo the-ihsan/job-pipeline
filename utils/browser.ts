@@ -51,17 +51,17 @@ export async function createBrowserWithPage(config: BrowserConfig = defaultBrows
   return { browser, page };
 }
 
-export interface FirefoxConnection {
+export interface ChromeConnection {
   browser: PlaywrightBrowser;
   context: BrowserContext;
 }
 
-export async function connectToFirefox(debuggingPort: number = 9222): Promise<FirefoxConnection> {
-  console.log(`🔗 Connecting to Firefox on port ${debuggingPort}...`);
+export async function connectToBrowser(debuggingPort: number = 9222): Promise<ChromeConnection> {
+  console.log(`🔗 Connecting to Chrome on port ${debuggingPort}...`);
   
   try {
-    // Firefox uses a different CDP endpoint structure
-    // Try to connect using the Firefox-specific CDP endpoint
+    // Chrome uses a different CDP endpoint structure
+    // Try to connect using the Chrome-specific CDP endpoint
     const browser = await chromium.connectOverCDP(`http://localhost:${debuggingPort}`);
     
     // Get the default context (or create one if none exists)
@@ -70,19 +70,19 @@ export async function connectToFirefox(debuggingPort: number = 9222): Promise<Fi
     
     if (contexts.length > 0) {
       context = contexts[0];
-      console.log('✅ Connected to existing Firefox context');
+      console.log('✅ Connected to existing Chrome context');
     } else {
       context = await browser.newContext();
-      console.log('✅ Created new Firefox context');
+      console.log('✅ Created new Chrome context');
     }
     
     return { browser, context };
   } catch (error) {
-    console.error(`❌ Failed to connect to Firefox on port ${debuggingPort}:`, error);
-    console.log('\n💡 Firefox remote debugging setup:');
-    console.log('   1. Close all Firefox instances');
-    console.log('   2. Start Firefox with: firefox --remote-debugging-port=9222');
-    console.log('   3. Make sure Firefox is fully loaded before running the script');
+    console.error(`❌ Failed to connect to Chrome on port ${debuggingPort}:`, error);
+    console.log('\n💡 Chrome remote debugging setup:');
+    console.log('   1. Close all Chrome instances');
+    console.log('   2. Start Chrome with: chrome --remote-debugging-port=9222');
+    console.log('   3. Make sure Chrome is fully loaded before running the script');
     console.log('\n   Alternative: Try using Chrome instead:');
     console.log('   google-chrome --remote-debugging-port=9222');
     throw error;

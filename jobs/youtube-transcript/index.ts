@@ -1,12 +1,8 @@
-import { start, connectToFirefox, waitForInput } from '../../utils/index.ts';
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { start, connectToBrowser, waitForInput } from '../../utils/index.ts';
 import type { Browser as PlaywrightBrowser, BrowserContext } from 'playwright';
 import fs from 'fs/promises';
 import { saveToTXT, getJobFilePath, appendToTXT } from '../../utils/file.ts';
 import clipboard from 'clipboardy';
-
-puppeteer.use(StealthPlugin());
 
 interface JobState {
   browser: PlaywrightBrowser;
@@ -131,7 +127,7 @@ const processLine = async (
 };
 
 export default async function main() {
-  const { browser, context } = await connectToFirefox();
+  const { browser, context } = await connectToBrowser();
 
   const state: JobState = {
     browser,
