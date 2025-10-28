@@ -185,9 +185,10 @@ export default async function main() {
 
           state.savedLinks.add(currentUrl);
 
-          const overview = clipboardContent.slice(0, 100);
+          const overview = clipboardContent.slice(0, 50);
 
-          console.log(`✅ Saved to ${filename}: ${overview}`);
+          console.log(`✅ ${state.savedLinkCount}: ${currentUrl}\n`);
+          console.log(`   ${overview}`);
           state.savedLinkCount++;
 
           clipboard.writeSync('');
