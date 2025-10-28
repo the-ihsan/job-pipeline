@@ -9,9 +9,7 @@ import { getManualFilePath, padNumber } from './utils.ts';
 import type { JobState } from './state.ts';
 import { getActiveTab } from './tab-ctrl.ts';
 
-export async function handleImageMode(
-  state: JobState
-): Promise<void> {
+export async function handleImageMode(state: JobState): Promise<void> {
   console.log('\n🖼️  Entering Image Mode...');
   console.log('Click on an image in the browser, or use sub-commands:');
   console.log('  list - List all images on the page');
@@ -27,9 +25,13 @@ export async function handleImageMode(
 
   const pageUrl = page.url();
 
-  await page.exposeBinding('saveImage', async (_, src: string) => {
-    state.savedImageCount = await processImageDownload(state, src, pageUrl);
-  });
+  try {
+    await page.exposeBinding('saveImage', async (_, src: string) => {
+      state.savedImageCount = await processImageDownload(state, src, pageUrl);
+    });
+  } catch (_) {
+    console.log('⚠️ If clicking does not work, use the "save" command instead.');
+  }
 
   // Inject click handler
   await page.evaluate(() => {
@@ -206,10 +208,17 @@ async function processImageDownload(
     await downloadImage(imgSrc, filepath);
     console.log(`✅ Downloaded to images/${filename}`);
 
+    clipboard.writeSync('');
+
     console.log('📝 Copy the caption and press Enter...');
     await waitForInput('');
 
-    const caption = clipboard.readSync() || '(no caption)';
+    const caption = clipboard.readSync();
+
+    if (!caption || caption.trim() === '') {
+      console.log('⚠️ No caption found. Skipping...');
+      return currentImageCount;
+    }
 
     const metaFilename = `${paddedNumber}.txt`;
     const metaFilepath = path.join(state.imgMetaDir, metaFilename);
@@ -226,7 +235,6 @@ async function processImageDownload(
     return currentImageCount;
   }
 }
-
 
 async function downloadImage(url: string, filepath: string): Promise<void> {
   return new Promise((resolve, reject) => {
