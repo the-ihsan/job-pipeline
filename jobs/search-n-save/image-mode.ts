@@ -1,15 +1,15 @@
 import path from 'path';
-import type { BrowserContext, Page } from 'playwright';
 import { waitForInput } from '../../utils/index.ts';
 import fs from 'fs/promises';
 import * as fsSync from 'fs';
 import clipboard from 'clipboardy';
 import https from 'https';
 import http from 'http';
-import { getManualFilePath, padNumber, type JobState } from './utils.ts';
+import { getManualFilePath, padNumber } from './utils.ts';
+import type { JobState } from './state.ts';
+import { getActiveTab } from './tab-ctrl.ts';
 
 export async function handleImageMode(
-  context: BrowserContext,
   state: JobState
 ): Promise<void> {
   console.log('\n🖼️  Entering Image Mode...');
@@ -19,7 +19,7 @@ export async function handleImageMode(
   console.log('  img <number> - Download indexed image');
   console.log('  leave - Exit image mode');
 
-  const page = await getActivePage(context);
+  const page = await getActiveTab(state);
   if (!page) {
     console.log('❌ No active page found');
     return;
@@ -124,7 +124,7 @@ export async function handleImageMode(
         }, index);
 
         if (imgSrc) {
-          await context.newPage().then(newPage => newPage.goto(imgSrc));
+          await state.context.newPage().then(newPage => newPage.goto(imgSrc));
           console.log(`✅ Opened image ${index} in new tab`);
         } else {
           console.log(`❌ Image ${index} not found`);
@@ -227,31 +227,6 @@ async function processImageDownload(
   }
 }
 
-async function getActivePage(context: BrowserContext): Promise<Page | null> {
-  try {
-    const pages = context.pages();
-
-    if (pages.length === 0) {
-      return null;
-    }
-
-    for (const page of pages) {
-      try {
-        const isFocused = await page.evaluate(() => document.hasFocus());
-        if (isFocused) {
-          return page;
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-
-    return pages[pages.length - 1];
-  } catch (error) {
-    console.error('Error getting active page:', error);
-    return null;
-  }
-}
 
 async function downloadImage(url: string, filepath: string): Promise<void> {
   return new Promise((resolve, reject) => {

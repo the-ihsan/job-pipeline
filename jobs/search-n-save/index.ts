@@ -1,19 +1,11 @@
-import {
-  connectToBrowser,
-  waitForInput,
-  saveToTXT,
-  getOutputPath,
-} from '../../utils/index.ts';
+import { waitForInput, saveToTXT, getOutputPath } from '../../utils/index.ts';
 import fs from 'fs/promises';
 import clipboard from 'clipboardy';
-import {
-  getActiveTabUrl,
-  startChrome,
-  initializeState,
-  type JobState,
-  getManualFilePath,
-  padNumber,
-} from './utils.ts';
+import { initializeState } from './state.ts';
+import { getManualFilePath, padNumber } from './utils.ts';
+
+import { getActiveTabUrl } from './tab-ctrl.ts';
+
 import { handleImageMode } from './image-mode.ts';
 import path from 'path';
 
@@ -21,26 +13,13 @@ export default async function main() {
   console.log('🚀 Starting Google Dorking Job');
 
   // Initialize job state (creates dirs, loads links, counts existing files)
-  const state: JobState = await initializeState();
-
-  let port = Number(process.argv[3] || '0');
-
-  if (!port) {
-    port = 9222;
-    await startChrome();
-  } else {
-    console.log(`🔗 Using existing Chrome on port ${port}`);
-  }
-
-  const { browser, context } = await connectToBrowser(port);
+  const state = await initializeState();
 
   try {
     let currentIndex = 0;
 
     while (true) {
-      const input = (await waitForInput(
-        '\n💬 Command [next/prev/save/check/view/img/undo/exit]: '
-      )) as string;
+      const input = (await waitForInput(`\n💬 ${state.cmdHint}`)) as string;
       const command = input.trim().toLowerCase();
 
       if (command === 'exit' || command === 'e') {
@@ -95,11 +74,13 @@ export default async function main() {
             const fileContent = await fs.readFile(outputFilePath, 'utf8');
             const firstLine = fileContent.split('\n')[0];
             const urlMatch = firstLine.match(/^# \d+: (.+)$/);
-            
+
             if (urlMatch && urlMatch[1] === lastUrl) {
               // URLs match, safe to delete
               await fs.unlink(outputFilePath);
-              console.log(`✅ Undone: Removed ${filename} and link: ${lastUrl}`);
+              console.log(
+                `✅ Undone: Removed ${filename} and link: ${lastUrl}`
+              );
             } else {
               // URLs don't match, only remove link
               console.log(
@@ -151,17 +132,14 @@ export default async function main() {
         }
       } else if (command === 'img' || command === 'i') {
         try {
-         await handleImageMode(
-            context,
-            state
-          );
+          await handleImageMode(state);
         } catch (error) {
           console.error('❌ Error in image mode:', error);
         }
         continue;
       } else if (command === 'check' || command === 'c') {
         try {
-          const currentUrl = await getActiveTabUrl(context);
+          const currentUrl = await getActiveTabUrl(state);
 
           if (state.savedLinks.has(currentUrl)) {
             console.log(`🔴 Already saved: ${currentUrl}`);
@@ -173,7 +151,7 @@ export default async function main() {
         }
       } else if (command === 'save' || command === 's') {
         try {
-          const currentUrl = await getActiveTabUrl(context);
+          const currentUrl = await getActiveTabUrl(state);
 
           if (state.savedLinks.has(currentUrl)) {
             console.log(
@@ -194,7 +172,8 @@ export default async function main() {
           let filename = `result-${paddedNumber}.txt`;
           let outputFilePath = path.join(state.dataDir, filename);
 
-          [outputFilePath, state.savedLinkCount] = await getManualFilePath(outputFilePath);
+          [outputFilePath, state.savedLinkCount] =
+            await getManualFilePath(outputFilePath);
 
           const content = `# ${state.savedLinkCount}: ${currentUrl}\n\n${clipboardContent}`;
 
@@ -226,7 +205,7 @@ export default async function main() {
   } catch (error) {
     console.error('❌ Fatal error during processing:', error);
   } finally {
-    await browser.close();
+    await state.browser.close();
     console.log('🔒 Browser connection closed');
   }
 }
