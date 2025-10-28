@@ -78,13 +78,13 @@ export async function connectToBrowser(debuggingPort: number = 9222): Promise<Ch
     
     return { browser, context };
   } catch (error) {
-    console.error(`❌ Failed to connect to Chrome on port ${debuggingPort}:`, error);
+    console.error(`❌ Failed to connect to Chrome on port ${debuggingPort}`);
     console.log('\n💡 Chrome remote debugging setup:');
     console.log('   1. Close all Chrome instances');
     console.log('   2. Start Chrome with: chrome --remote-debugging-port=9222');
     console.log('   3. Make sure Chrome is fully loaded before running the script');
     console.log('\n   Alternative: Try using Chrome instead:');
     console.log('   google-chrome --remote-debugging-port=9222');
-    throw error;
+    process.exit(1);
   }
 }

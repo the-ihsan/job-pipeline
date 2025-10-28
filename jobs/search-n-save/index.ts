@@ -20,9 +20,16 @@ export default async function main() {
   // Initialize job state (creates dirs, loads links, counts existing files)
   const state: JobState = await initializeState();
 
-  await startChrome();
+  let port = Number(process.argv[3] || '0');
 
-  const { browser, context } = await connectToBrowser();
+  if (!port) {
+    port = 9222;
+    await startChrome();
+  } else {
+    console.log(`🔗 Using existing Chrome on port ${port}`);
+  }
+
+  const { browser, context } = await connectToBrowser(port);
 
   try {
     let currentIndex = 0;
@@ -46,12 +53,14 @@ export default async function main() {
           }
 
           const linksFilePath = getOutputPath('links.txt');
-          
+
           // Read all lines from links.txt
           let linkLines: string[] = [];
           try {
             const linksContent = await fs.readFile(linksFilePath, 'utf8');
-            linkLines = linksContent.split('\n').filter(line => line.trim() !== '');
+            linkLines = linksContent
+              .split('\n')
+              .filter(line => line.trim() !== '');
           } catch (error) {
             console.log('⚠️ No links.txt file found. Nothing to undo.');
             continue;
@@ -77,7 +86,7 @@ export default async function main() {
           const paddedNumber = String(state.savedLinkCount).padStart(5, '0');
           const filename = `result-${paddedNumber}.txt`;
           const outputFilePath = getOutputPath('data', filename);
-          
+
           try {
             await fs.unlink(outputFilePath);
             console.log(`✅ Undone: Removed ${filename} and link: ${lastUrl}`);
@@ -122,7 +131,10 @@ export default async function main() {
         }
       } else if (command === 'img' || command === 'i') {
         try {
-          state.savedImageCount = await handleImageMode(context,  state.savedImageCount);
+          state.savedImageCount = await handleImageMode(
+            context,
+            state.savedImageCount
+          );
         } catch (error) {
           console.error('❌ Error in image mode:', error);
         }
