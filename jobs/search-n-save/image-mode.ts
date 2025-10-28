@@ -1,16 +1,17 @@
 import path from 'path';
 import type { BrowserContext, Page } from 'playwright';
-import { getOutputPath, waitForInput } from '../../utils/index.ts';
+import { waitForInput } from '../../utils/index.ts';
 import fs from 'fs/promises';
 import * as fsSync from 'fs';
 import clipboard from 'clipboardy';
 import https from 'https';
 import http from 'http';
+import { getManualFilePath, padNumber, type JobState } from './utils.ts';
 
 export async function handleImageMode(
   context: BrowserContext,
-  imageCount: number
-): Promise<number> {
+  state: JobState
+): Promise<void> {
   console.log('\n🖼️  Entering Image Mode...');
   console.log('Click on an image in the browser, or use sub-commands:');
   console.log('  list - List all images on the page');
@@ -21,16 +22,13 @@ export async function handleImageMode(
   const page = await getActivePage(context);
   if (!page) {
     console.log('❌ No active page found');
-    return imageCount;
+    return;
   }
 
   const pageUrl = page.url();
-  const imagesDir = getOutputPath('images');
-  await fs.mkdir(imagesDir, { recursive: true });
 
   await page.exposeBinding('saveImage', async (_, src: string) => {
-    await processImageDownload(src, pageUrl, imagesDir, imageCount);
-    return;
+    state.savedImageCount = await processImageDownload(state, src, pageUrl);
   });
 
   // Inject click handler
@@ -80,11 +78,9 @@ export async function handleImageMode(
     document.addEventListener('click', window.__imageClickHandler);
   });
 
-  let currentImageCount = imageCount;
-
   while (true) {
     const input = (await waitForInput(
-      '\n🖼️  [list/open/img/leave]: '
+      '\n🖼️  [list/open/save/leave]: '
     )) as string;
     const command = input.trim().toLowerCase();
 
@@ -139,7 +135,7 @@ export async function handleImageMode(
       continue;
     }
 
-    if (command.startsWith('img ')) {
+    if (command.startsWith('save ')) {
       const index = parseInt(command.split(' ')[1]);
       try {
         const imgSrc = await page.evaluate(idx => {
@@ -152,13 +148,11 @@ export async function handleImageMode(
           continue;
         }
 
-        await processImageDownload(
+        state.savedImageCount = await processImageDownload(
+          state,
           imgSrc,
-          pageUrl,
-          imagesDir,
-          currentImageCount
+          pageUrl
         );
-        currentImageCount++;
       } catch (error) {
         console.error('❌ Error downloading image:', error);
       }
@@ -180,16 +174,13 @@ export async function handleImageMode(
   } catch (error) {
     console.error('❌ Error removing click handler:', error);
   }
-
-  return currentImageCount;
 }
 
 async function processImageDownload(
+  state: JobState,
   imgSrc: string,
-  pageUrl: string,
-  imagesDir: string,
-  imageCount: number
-): Promise<void> {
+  pageUrl: string
+): Promise<number> {
   console.log(`\n📥 Downloading image: ${imgSrc.substring(0, 60)}...`);
 
   const urlWithoutQuery = imgSrc.split('?')[0];
@@ -203,9 +194,13 @@ async function processImageDownload(
     ext = lastSegment.substring(dotIndex + 1).toLowerCase();
   }
 
-  const paddedNumber = String(imageCount).padStart(5, '0');
-  const filename = `${paddedNumber}.${ext}`;
-  const filepath = path.join(imagesDir, filename);
+  let currentImageCount = state.savedImageCount;
+  let paddedNumber = padNumber(currentImageCount);
+  let filename = `${paddedNumber}.${ext}`;
+  let filepath = path.join(state.imagesDir, filename);
+
+  // Safety check: verify image file doesn't already exist
+  [filepath, currentImageCount] = await getManualFilePath(filepath);
 
   try {
     await downloadImage(imgSrc, filepath);
@@ -216,20 +211,19 @@ async function processImageDownload(
 
     const caption = clipboard.readSync() || '(no caption)';
 
-    const imgMetaDir = getOutputPath('img-meta');
-    await fs.mkdir(imgMetaDir, { recursive: true });
-
     const metaFilename = `${paddedNumber}.txt`;
-    const metaFilepath = getOutputPath('img-meta', metaFilename);
-    const metaContent = `# ${imageCount}. ${pageUrl}\nimages/${filename}\n${caption}`;
+    const metaFilepath = path.join(state.imgMetaDir, metaFilename);
+    const metaContent = `# ${currentImageCount}. ${pageUrl}\nimages/${filename}\n${caption}`;
 
     await fs.writeFile(metaFilepath, metaContent, 'utf8');
 
     console.log(`✅ Saved metadata to img-meta/${metaFilename}`);
 
     clipboard.writeSync('');
+    return currentImageCount + 1;
   } catch (error) {
     console.error('❌ Error downloading image:', error);
+    return currentImageCount;
   }
 }
 

@@ -11,8 +11,11 @@ import {
   startChrome,
   initializeState,
   type JobState,
+  getManualFilePath,
+  padNumber,
 } from './utils.ts';
 import { handleImageMode } from './image-mode.ts';
+import path from 'path';
 
 export default async function main() {
   console.log('🚀 Starting Google Dorking Job');
@@ -83,13 +86,30 @@ export default async function main() {
 
           state.savedLinkCount--;
           // Delete the corresponding result file from data directory
-          const paddedNumber = String(state.savedLinkCount).padStart(5, '0');
+          const paddedNumber = padNumber(state.savedLinkCount);
           const filename = `result-${paddedNumber}.txt`;
-          const outputFilePath = getOutputPath('data', filename);
+          const outputFilePath = path.join(state.dataDir, filename);
 
           try {
-            await fs.unlink(outputFilePath);
-            console.log(`✅ Undone: Removed ${filename} and link: ${lastUrl}`);
+            // Safety check: verify URL matches before deleting file
+            const fileContent = await fs.readFile(outputFilePath, 'utf8');
+            const firstLine = fileContent.split('\n')[0];
+            const urlMatch = firstLine.match(/^# \d+: (.+)$/);
+            
+            if (urlMatch && urlMatch[1] === lastUrl) {
+              // URLs match, safe to delete
+              await fs.unlink(outputFilePath);
+              console.log(`✅ Undone: Removed ${filename} and link: ${lastUrl}`);
+            } else {
+              // URLs don't match, only remove link
+              console.log(
+                `⚠️ URL mismatch! File ${filename} contains different URL. Only removed link from links.txt.`
+              );
+              console.log(`   Link removed: ${lastUrl}`);
+              if (urlMatch) {
+                console.log(`   File contains: ${urlMatch[1]}`);
+              }
+            }
           } catch (error) {
             console.log(`⚠️ Removed link but file ${filename} not found.`);
           }
@@ -131,9 +151,9 @@ export default async function main() {
         }
       } else if (command === 'img' || command === 'i') {
         try {
-          state.savedImageCount = await handleImageMode(
+         await handleImageMode(
             context,
-            state.savedImageCount
+            state
           );
         } catch (error) {
           console.error('❌ Error in image mode:', error);
@@ -169,13 +189,16 @@ export default async function main() {
             continue;
           }
 
-          const paddedNumber = String(state.savedLinkCount).padStart(5, '0');
-          const filename = `result-${paddedNumber}.txt`;
+          // Safety check: verify file doesn't already exist
+          let paddedNumber = padNumber(state.savedLinkCount);
+          let filename = `result-${paddedNumber}.txt`;
+          let outputFilePath = path.join(state.dataDir, filename);
+
+          [outputFilePath, state.savedLinkCount] = await getManualFilePath(outputFilePath);
 
           const content = `# ${state.savedLinkCount}: ${currentUrl}\n\n${clipboardContent}`;
 
           // Save to data directory
-          const outputFilePath = getOutputPath('data', filename);
           await fs.writeFile(outputFilePath, content, 'utf8');
 
           const linksFilePath = getOutputPath('links.txt');
