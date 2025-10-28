@@ -1,63 +1,35 @@
 import {
-  getJobFilePath,
   connectToBrowser,
   waitForInput,
+  saveToTXT,
+  getOutputPath,
 } from '../../utils/index.ts';
 import fs from 'fs/promises';
 import clipboard from 'clipboardy';
-import path from 'path';
 import {
   getActiveTabUrl,
-  getLastImageNumber,
-  loadExistingLinks,
-  readLinesFromFile,
   startChrome,
+  initializeState,
+  type JobState,
 } from './utils.ts';
 import { handleImageMode } from './image-mode.ts';
 
 export default async function main() {
   console.log('🚀 Starting Google Dorking Job');
 
-  const linksPath = getJobFilePath('links.txt');
-  try {
-    await fs.access(linksPath);
-  } catch {
-    console.error(`Input file not found: ${linksPath}`);
-    process.exit(1);
-  }
+  // Initialize job state (creates dirs, loads links, counts existing files)
+  const state: JobState = await initializeState();
 
-  console.log(`📖 Reading lines from: ${linksPath}`);
-  const lines = await readLinesFromFile(linksPath);
-  console.log(`📊 Found ${lines.length} lines to process\n`);
-
-  if (lines.length === 0) {
-    console.log('⚠️ No lines found in input file');
-    return;
-  }
-
-  const jobDir = path.dirname(linksPath);
-  const browserSessionDir = path.join(jobDir, 'browser-session');
-  const outputDir = path.join(jobDir, 'output');
-
-  await fs.mkdir(browserSessionDir, { recursive: true });
-  await fs.mkdir(outputDir, { recursive: true });
-
-  const savedLinks = await loadExistingLinks(outputDir);
-
-  const initialImageCount = await getLastImageNumber(outputDir);
-
-  await startChrome(browserSessionDir);
+  await startChrome();
 
   const { browser, context } = await connectToBrowser();
 
   try {
     let currentIndex = 0;
-    let savedCount = 0;
-    let imageCount = initialImageCount;
 
     while (true) {
       const input = (await waitForInput(
-        '\n💬 Command [next/prev/save/check/view/img/exit]: '
+        '\n💬 Command [next/prev/save/check/view/img/undo/exit]: '
       )) as string;
       const command = input.trim().toLowerCase();
 
@@ -66,13 +38,62 @@ export default async function main() {
         break;
       }
 
-      if (command === 'next' || command === 'n') {
-        if (currentIndex >= lines.length) {
+      if (command === 'undo' || command === 'u') {
+        try {
+          if (state.savedLinkCount === 0) {
+            console.log('⚠️ Nothing to undo. No saves have been made yet.');
+            continue;
+          }
+
+          const linksFilePath = getOutputPath('links.txt');
+          
+          // Read all lines from links.txt
+          let linkLines: string[] = [];
+          try {
+            const linksContent = await fs.readFile(linksFilePath, 'utf8');
+            linkLines = linksContent.split('\n').filter(line => line.trim() !== '');
+          } catch (error) {
+            console.log('⚠️ No links.txt file found. Nothing to undo.');
+            continue;
+          }
+
+          if (linkLines.length === 0) {
+            console.log('⚠️ No links to undo.');
+            continue;
+          }
+
+          // Get the last URL
+          const lastUrl = linkLines[linkLines.length - 1];
+
+          // Remove the last line and write back
+          const updatedLinks = linkLines.slice(0, -1);
+          await saveToTXT(updatedLinks, linksFilePath);
+
+          // Remove from the set
+          state.savedLinks.delete(lastUrl);
+
+          state.savedLinkCount--;
+          // Delete the corresponding result file from data directory
+          const paddedNumber = String(state.savedLinkCount).padStart(5, '0');
+          const filename = `result-${paddedNumber}.txt`;
+          const outputFilePath = getOutputPath('data', filename);
+          
+          try {
+            await fs.unlink(outputFilePath);
+            console.log(`✅ Undone: Removed ${filename} and link: ${lastUrl}`);
+          } catch (error) {
+            console.log(`⚠️ Removed link but file ${filename} not found.`);
+          }
+        } catch (error) {
+          console.error('❌ Error during undo:', error);
+        }
+      } else if (command === 'next' || command === 'n') {
+        if (currentIndex >= state.inputLinks.length) {
           console.log('⚠️ No more lines to process. Reached end of file.');
           continue;
         }
 
-        const line = lines[currentIndex];
+        const line = state.inputLinks[currentIndex];
         console.log(`\n📋 Line #${currentIndex + 1}: ${line}`);
         currentIndex++;
       } else if (command === 'prev' || command === 'p') {
@@ -81,7 +102,7 @@ export default async function main() {
           continue;
         }
         currentIndex--;
-        const line = lines[currentIndex];
+        const line = state.inputLinks[currentIndex];
         console.log(`\n📋 Line #${currentIndex + 1}: ${line}`);
       } else if (command === 'view' || command === 'v') {
         try {
@@ -100,12 +121,17 @@ export default async function main() {
           console.error('❌ Error reading clipboard:', error);
         }
       } else if (command === 'img' || command === 'i') {
-        imageCount = await handleImageMode(context, outputDir, imageCount);
+        try {
+          state.savedImageCount = await handleImageMode(context,  state.savedImageCount);
+        } catch (error) {
+          console.error('❌ Error in image mode:', error);
+        }
+        continue;
       } else if (command === 'check' || command === 'c') {
         try {
           const currentUrl = await getActiveTabUrl(context);
 
-          if (savedLinks.has(currentUrl)) {
+          if (state.savedLinks.has(currentUrl)) {
             console.log(`🔴 Already saved: ${currentUrl}`);
           } else {
             console.log(`🟢 New URL: ${currentUrl}`);
@@ -117,7 +143,7 @@ export default async function main() {
         try {
           const currentUrl = await getActiveTabUrl(context);
 
-          if (savedLinks.has(currentUrl)) {
+          if (state.savedLinks.has(currentUrl)) {
             console.log(
               '⚠️  Duplicate link detected! This URL was already saved. Skipping...'
             );
@@ -131,23 +157,24 @@ export default async function main() {
             continue;
           }
 
-          const paddedNumber = String(savedCount).padStart(5, '0');
+          const paddedNumber = String(state.savedLinkCount).padStart(5, '0');
           const filename = `result-${paddedNumber}.txt`;
 
-          const content = `# ${savedCount}: ${currentUrl}\n\n${clipboardContent}`;
+          const content = `# ${state.savedLinkCount}: ${currentUrl}\n\n${clipboardContent}`;
 
-          const outputFilePath = path.join(outputDir, filename);
+          // Save to data directory
+          const outputFilePath = getOutputPath('data', filename);
           await fs.writeFile(outputFilePath, content, 'utf8');
 
-          const linksFilePath = path.join(outputDir, 'links.txt');
+          const linksFilePath = getOutputPath('links.txt');
           await fs.appendFile(linksFilePath, `${currentUrl}\n`, 'utf8');
 
-          savedLinks.add(currentUrl);
+          state.savedLinks.add(currentUrl);
 
           const overview = clipboardContent.slice(0, 100);
 
           console.log(`✅ Saved to ${filename}: ${overview}`);
-          savedCount++;
+          state.savedLinkCount++;
 
           clipboard.writeSync('');
         } catch (error) {
@@ -155,12 +182,12 @@ export default async function main() {
         }
       } else {
         console.log(
-          '❓ Unknown command. Use: next (n), prev (p), check (c), view (v), img (i), save (s), or exit (e)'
+          '❓ Unknown command. Use: next (n), prev (p), check (c), view (v), img (i), save (s), undo (u), or exit (e)'
         );
       }
     }
 
-    console.log(`\n🎉 Job completed. Saved ${savedCount} files.`);
+    console.log(`\n🎉 Job completed. Saved ${state.savedLinkCount} links.`);
   } catch (error) {
     console.error('❌ Fatal error during processing:', error);
   } finally {

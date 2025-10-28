@@ -12,8 +12,12 @@ const getSavePath = (filename: string) => {
 };
 
 
-export const getJobFilePath = (filename: string) => {
-  return path.resolve('jobs', process.env.JOB_NAME || '', filename);
+export const getJobFilePath = (...path_segments: string[]) => {
+  return path.resolve('jobs', process.env.JOB_NAME || '', ...path_segments);
+};
+
+export const getOutputPath = (...path_segments: string[]) => {
+  return path.resolve('jobs', process.env.JOB_NAME || '', 'output', ...path_segments);
 };
 
 export async function saveToJSON(

@@ -1,6 +1,6 @@
 import path from 'path';
 import type { BrowserContext, Page } from 'playwright';
-import { waitForInput } from '../../utils/index.ts';
+import { getOutputPath, waitForInput } from '../../utils/index.ts';
 import fs from 'fs/promises';
 import * as fsSync from 'fs';
 import clipboard from 'clipboardy';
@@ -9,7 +9,6 @@ import http from 'http';
 
 export async function handleImageMode(
   context: BrowserContext,
-  outputDir: string,
   imageCount: number
 ): Promise<number> {
   console.log('\n🖼️  Entering Image Mode...');
@@ -26,11 +25,11 @@ export async function handleImageMode(
   }
 
   const pageUrl = page.url();
-  const imagesDir = path.join(outputDir, 'images');
+  const imagesDir = getOutputPath('images');
   await fs.mkdir(imagesDir, { recursive: true });
 
   await page.exposeBinding('saveImage', async (_, src: string) => {
-    await processImageDownload(src, pageUrl, imagesDir, outputDir, imageCount);
+    await processImageDownload(src, pageUrl, imagesDir, imageCount);
     return;
   });
 
@@ -157,7 +156,6 @@ export async function handleImageMode(
           imgSrc,
           pageUrl,
           imagesDir,
-          outputDir,
           currentImageCount
         );
         currentImageCount++;
@@ -168,16 +166,20 @@ export async function handleImageMode(
     }
   }
 
-  // Remove click handler
-  await page.evaluate(() => {
-    // @ts-ignore
-    if (window.__imageClickHandler) {
+  try {
+    // Remove click handler
+    await page.evaluate(() => {
       // @ts-ignore
-      document.removeEventListener('click', window.__imageClickHandler);
-      // @ts-ignore
-      delete window.__imageClickHandler;
-    }
-  });
+      if (window.__imageClickHandler) {
+        // @ts-ignore
+        document.removeEventListener('click', window.__imageClickHandler);
+        // @ts-ignore
+        delete window.__imageClickHandler;
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error removing click handler:', error);
+  }
 
   return currentImageCount;
 }
@@ -186,7 +188,6 @@ async function processImageDownload(
   imgSrc: string,
   pageUrl: string,
   imagesDir: string,
-  outputDir: string,
   imageCount: number
 ): Promise<void> {
   console.log(`\n📥 Downloading image: ${imgSrc.substring(0, 60)}...`);
@@ -196,7 +197,7 @@ async function processImageDownload(
   const lastSegment = pathSegments[pathSegments.length - 1];
 
   const dotIndex = lastSegment.lastIndexOf('.');
-  let ext = 'jpeg'; 
+  let ext = 'jpeg';
 
   if (dotIndex > 0 && dotIndex < lastSegment.length - 1) {
     ext = lastSegment.substring(dotIndex + 1).toLowerCase();
@@ -215,11 +216,11 @@ async function processImageDownload(
 
     const caption = clipboard.readSync() || '(no caption)';
 
-    const imgMetaDir = path.join(outputDir, 'img-meta');
+    const imgMetaDir = getOutputPath('img-meta');
     await fs.mkdir(imgMetaDir, { recursive: true });
 
     const metaFilename = `${paddedNumber}.txt`;
-    const metaFilepath = path.join(imgMetaDir, metaFilename);
+    const metaFilepath = getOutputPath('img-meta', metaFilename);
     const metaContent = `# ${imageCount}. ${pageUrl}\nimages/${filename}\n${caption}`;
 
     await fs.writeFile(metaFilepath, metaContent, 'utf8');

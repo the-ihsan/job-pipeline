@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { spawn } from 'child_process';
+import { getJobFilePath, getOutputPath } from '../../utils/file.ts';
 
 export async function readLinesFromFile(filePath: string): Promise<string[]> {
   try {
@@ -12,10 +13,8 @@ export async function readLinesFromFile(filePath: string): Promise<string[]> {
   }
 }
 
-export async function loadExistingLinks(
-  outputDir: string
-): Promise<Set<string>> {
-  const linksFilePath = path.join(outputDir, 'links.txt');
+export async function loadExistingLinks(): Promise<Set<string>> {
+  const linksFilePath = getOutputPath('links.txt');
   const links = new Set<string>();
 
   try {
@@ -66,8 +65,110 @@ export async function getLastImageNumber(outputDir: string): Promise<number> {
   }
 }
 
-export async function startChrome(userDataDir: string, port: number = 9222) {
+export async function getLastResultFileNumber(
+  dataDir: string
+): Promise<number> {
+  try {
+    await fs.mkdir(dataDir, { recursive: true });
+    const files = await fs.readdir(dataDir);
+
+    if (files.length === 0) {
+      console.log('📄 No existing result files found, starting from 0');
+      return 0;
+    }
+
+    // Extract numbers from filenames (format: result-XXXXX.txt)
+    const numbers = files
+      .map(file => {
+        const match = file.match(/^result-(\d+)\.txt$/);
+        return match ? parseInt(match[1]) : -1;
+      })
+      .filter(num => num >= 0);
+
+    if (numbers.length === 0) {
+      console.log('📄 No numbered result files found, starting from 0');
+      return 0;
+    }
+
+    const maxNumber = Math.max(...numbers);
+    console.log(
+      `📄 Found ${files.length} existing result files, last number: ${maxNumber}`
+    );
+    return maxNumber + 1;
+  } catch (error) {
+    console.log('📄 No existing data directory, starting from 0');
+    return 0;
+  }
+}
+
+export interface JobState {
+  savedLinkCount: number;
+  savedImageCount: number;
+  inputLinks: string[];
+  savedLinks: Set<string>;
+
+  dataDir: string;
+  imagesDir: string;
+  imgMetaDir: string;
+  browserSessionDir: string;
+
+  cmdHint: string;
+}
+
+export async function initializeState(): Promise<JobState> {
+  console.log('🔧 Initializing job state...');
+
+  const linksPath = getJobFilePath('links.txt');
+
+  // Create necessary directories
+  const dataDir = getOutputPath('data');
+  const imagesDir = getOutputPath('images');
+  const imgMetaDir = getOutputPath('img-meta');
+  const browserSessionDir = getOutputPath('browser-session');
+
+  console.log('📁 Creating output directories...');
+  await fs.mkdir(dataDir, { recursive: true });
+  await fs.mkdir(imagesDir, { recursive: true });
+  await fs.mkdir(imgMetaDir, { recursive: true });
+  await fs.mkdir(browserSessionDir, { recursive: true });
+
+  let cmdHint = `💬 Command [next/prev/save/check/view/img/undo/exit]: `;
+
+  let inputLinks: string[] = [];
+  try {
+    inputLinks = await readLinesFromFile(linksPath);
+  } catch (_) {
+    cmdHint = `💬 Command [save/check/view/img/undo/exit]: `;
+  }
+
+  // Load existing saved links
+  const savedLinks = await loadExistingLinks();
+
+  // Get counts from existing files
+  const savedLinkCount = await getLastResultFileNumber(dataDir);
+  const savedImageCount = await getLastImageNumber(imagesDir);
+
+  console.log(
+    `📊 Initialized: ${savedLinkCount} links, ${savedImageCount} images\n`
+  );
+
+  return {
+    savedLinkCount,
+    savedImageCount,
+    inputLinks,
+    savedLinks,
+    dataDir,
+    imagesDir,
+    imgMetaDir,
+    browserSessionDir,
+    cmdHint,
+  };
+}
+
+export async function startChrome(port: number = 9222) {
   console.log('🌐 Starting Chrome with remote debugging...');
+
+  const userDataDir = getOutputPath('browser-session');
 
   const chromeProcess = spawn(
     'google-chrome',
