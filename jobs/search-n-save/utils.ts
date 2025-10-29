@@ -22,8 +22,11 @@ export async function getManualFilePath(
       // File exists, ask for new starting number
       console.log(`⚠️  Image file ${filename} already exists!`);
       const newStart = (await waitForInput(
-        'Enter a new starting number: '
+        'Enter a new starting number (o to overwrite): '
       )) as string;
+      if (['o', 'overwrite'].includes(newStart.trim().toLowerCase())) {
+        return [filepath, num];
+      }
       const newNumber = parseInt(newStart.trim());
       if (isNaN(newNumber) || newNumber < 0) {
         console.log('❌ Invalid number.');

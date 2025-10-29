@@ -3,6 +3,7 @@ import { getJobFilePath, getOutputPath } from '../../utils/file.ts';
 import fs from 'fs/promises';
 import { connectToBrowser } from '../../utils/browser.ts';
 import { spawn } from 'child_process';
+import { initializeImageMode, initImageModePage } from './image-mode.ts';
 
 export interface JobState {
   savedLinkCount: number;
@@ -20,6 +21,9 @@ export interface JobState {
 
   browser: Browser;
   context: BrowserContext;
+
+  isImageMode: boolean;
+  isImageSaving: boolean;
 }
 
 export async function initializeState(): Promise<JobState> {
@@ -35,7 +39,6 @@ export async function initializeState(): Promise<JobState> {
   }
 
   const { browser, context } = await connectToBrowser(port);
-  
 
   const linksPath = getJobFilePath('links.txt');
 
@@ -84,17 +87,37 @@ export async function initializeState(): Promise<JobState> {
     browserSessionDir,
     cmdHint,
     activeTabIndex: 0,
+    isImageMode: false,
+    isImageSaving: false,
   };
+
+  await context.exposeBinding('mainLog', async (source, ...args) => {
+    console.log(source.page.url());
+    console.log(...args);
+    console.log('--------------------------------');
+  });
+
+  await context.exposeBinding('focusHelper', async source => {
+    const tabs = state.context.pages();
+    let index = 0;
+    for (const tab of tabs) {
+      if (tab === source.page) {
+        break;
+      }
+      index++;
+    }
+    state.activeTabIndex = Math.min(index, tabs.length - 1);
+  });
+
+  await initializeImageMode(state);
 
   const tabs = context.pages();
   for (const tab of tabs) {
-    await attachFocusHelperPage(state, tab);
-    attachCloseHandler(state, tab);
+    await initializePage(state, tab);
   }
 
-  context.on('page', async (page) => {
-    await attachFocusHelperPage(state, page);
-    attachCloseHandler(state, page);
+  context.on('page', async page => {
+    await initializePage(state, page);
   });
 
   return state;
@@ -218,42 +241,40 @@ export async function getLastResultFileNumber(
   }
 }
 
-async function attachFocusHelperPage(
-  state: JobState,
-  page: Page,
-) {
-  await page.exposeBinding('focusHelper', async () => {
-    const tabs = state.context.pages();
-    let index = 0;
-    for (const tab of tabs) {
-      if (tab === page) {
-        break;
+async function initializePage(state: JobState, page: Page) {
+  const init = async () => {
+    await initImageModePage(page);
+    await page.evaluate(() => {
+      // @ts-ignore
+      if (window.__focusHelperRegistered) {
+        return;
       }
-      index++;
-    }
-    state.activeTabIndex = Math.min(index, tabs.length - 1);
-  });
+      // @ts-ignore
+      window.__focusHelperRegistered = true;
+      // @ts-ignore
+      document.addEventListener('click', focusHelper, { capture: true });
+    });
+  };
+  page.on('domcontentloaded', init);
 
-  await page.evaluate(() => {
-    // @ts-ignore
-    document.addEventListener('click', focusHelper, {capture: true});
-  });
-}
-
-function attachCloseHandler(state: JobState, page: Page) {
   page.on('close', async () => {
     const tabs = state.context.pages();
-    
+
     // If no tabs left, reset to 0
     if (tabs.length === 0) {
       state.activeTabIndex = 0;
       return;
     }
-    
+
     // If the active tab index is beyond the current tab count, adjust it
     if (state.activeTabIndex >= tabs.length) {
       state.activeTabIndex = tabs.length - 1;
     }
-    await tabs[state.activeTabIndex].bringToFront();
+    try {
+      await tabs[state.activeTabIndex].bringToFront();
+    } catch (error) {
+      console.error('Error bringing tab to front');
+    }
   });
+  await init();
 }

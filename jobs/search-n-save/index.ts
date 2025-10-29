@@ -131,11 +131,13 @@ export default async function main() {
           console.error('❌ Error reading clipboard:', error);
         }
       } else if (command === 'img' || command === 'i') {
+        state.isImageMode = true;
         try {
           await handleImageMode(state);
         } catch (error) {
           console.error('❌ Error in image mode:', error);
         }
+        state.isImageMode = false;
         continue;
       } else if (command === 'check' || command === 'c') {
         try {

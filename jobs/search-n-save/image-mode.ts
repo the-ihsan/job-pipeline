@@ -8,8 +8,67 @@ import http from 'http';
 import { getManualFilePath, padNumber } from './utils.ts';
 import type { JobState } from './state.ts';
 import { getActiveTab } from './tab-ctrl.ts';
+import type { Page } from 'playwright';
+
+
+export async function initializeImageMode(state: JobState): Promise<void> {
+  await state.context.exposeBinding('saveImage', async (source, src: string) => {
+    if (!state.isImageMode || state.isImageSaving) {
+      return;
+    }
+    state.isImageSaving = true;
+    state.savedImageCount = await processImageDownload(state, src, source.page.url());
+    state.isImageSaving = false;
+  });
+}
+
+
+export async function initImageModePage(page: Page): Promise<void> {
+  // Inject click handler
+  await page.evaluate(() => {
+    // @ts-ignore
+    if (window.__imageClickHandler) {
+      return;
+    }
+    // @ts-ignore
+    window.__imageClickHandler = (e: MouseEvent) => {
+      // @ts-ignore
+      let target = e.target as HTMLElement;
+
+      // Check if target is an image
+      if (target.tagName === 'IMG') {
+        // @ts-ignore
+        saveImage((target as HTMLImageElement).src);
+        return;
+      }
+
+      // Check siblings
+      const parent = target.parentElement;
+      if (parent) {
+        const img = parent.querySelector('img');
+        if (img) {
+          // @ts-ignore
+          saveImage(img.src);
+          return;
+        }
+      }
+
+      // Check children
+      const childImg = target.querySelector('img');
+      if (childImg) {
+        // @ts-ignore
+        saveImage(childImg.src);
+      }
+    };
+
+    // @ts-ignore
+    document.addEventListener('click', window.__imageClickHandler);
+  });
+
+}
 
 export async function handleImageMode(state: JobState): Promise<void> {
+
   console.log('\n🖼️  Entering Image Mode...');
   console.log('Click on an image in the browser, or use sub-commands:');
   console.log('  list - List all images on the page');
@@ -24,62 +83,7 @@ export async function handleImageMode(state: JobState): Promise<void> {
   }
 
   const pageUrl = page.url();
-
-  try {
-    await page.exposeBinding('saveImage', async (_, src: string) => {
-      state.savedImageCount = await processImageDownload(state, src, pageUrl);
-    });
-  } catch (_) {
-    console.log('⚠️ If clicking does not work, use the "save" command instead.');
-  }
-
-  // Inject click handler
-  await page.evaluate(() => {
-    const saveImageWeb = async (src: string) => {
-      // @ts-ignore
-      window.__imageDownloading = true;
-      // @ts-ignore
-      await saveImage(src);
-      // @ts-ignore
-      window.__imageDownloading = false;
-      return;
-    };
-    // @ts-ignore
-    window.__imageClickHandler = (e: MouseEvent) => {
-      // @ts-ignore
-      if (window.__imageDownloading) return;
-      let target = e.target as HTMLElement;
-
-      // Check if target is an image
-      if (target.tagName === 'IMG') {
-        // @ts-ignore
-        saveImageWeb((target as HTMLImageElement).src);
-        return;
-      }
-
-      // Check siblings
-      const parent = target.parentElement;
-      if (parent) {
-        const img = parent.querySelector('img');
-        if (img) {
-          // @ts-ignore
-          saveImageWeb(img.src);
-          return;
-        }
-      }
-
-      // Check children
-      const childImg = target.querySelector('img');
-      if (childImg) {
-        // @ts-ignore
-        saveImageWeb(childImg.src);
-      }
-    };
-
-    // @ts-ignore
-    document.addEventListener('click', window.__imageClickHandler);
-  });
-
+  
   while (true) {
     const input = (await waitForInput(
       '\n🖼️  [list/open/save/leave]: '
@@ -161,21 +165,6 @@ export async function handleImageMode(state: JobState): Promise<void> {
       continue;
     }
   }
-
-  try {
-    // Remove click handler
-    await page.evaluate(() => {
-      // @ts-ignore
-      if (window.__imageClickHandler) {
-        // @ts-ignore
-        document.removeEventListener('click', window.__imageClickHandler);
-        // @ts-ignore
-        delete window.__imageClickHandler;
-      }
-    });
-  } catch (error) {
-    console.error('❌ Error removing click handler:', error);
-  }
 }
 
 async function processImageDownload(
@@ -216,7 +205,8 @@ async function processImageDownload(
     const caption = clipboard.readSync();
 
     if (!caption || caption.trim() === '') {
-      console.log('⚠️ No caption found. Skipping...');
+      console.log('⚠️ No caption found. Removing image...');
+      fs.unlink(filepath);
       return currentImageCount;
     }
 
