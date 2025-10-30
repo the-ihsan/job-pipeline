@@ -41,24 +41,6 @@ export async function initImageModePage(page: Page): Promise<void> {
         saveImage((target as HTMLImageElement).src);
         return;
       }
-
-      // Check siblings
-      const parent = target.parentElement;
-      if (parent) {
-        const img = parent.querySelector('img');
-        if (img) {
-          // @ts-ignore
-          saveImage(img.src);
-          return;
-        }
-      }
-
-      // Check children
-      const childImg = target.querySelector('img');
-      if (childImg) {
-        // @ts-ignore
-        saveImage(childImg.src);
-      }
     };
 
     // @ts-ignore
@@ -74,6 +56,7 @@ export async function handleImageMode(state: JobState): Promise<void> {
   console.log('  list - List all images on the page');
   console.log('  open <number> - Open indexed image in new tab');
   console.log('  img <number> - Download indexed image');
+  console.log('  undo - Undo last saved image');
   console.log('  leave - Exit image mode');
 
   const page = await getActiveTab(state);
@@ -86,13 +69,65 @@ export async function handleImageMode(state: JobState): Promise<void> {
   
   while (true) {
     const input = (await waitForInput(
-      '\n🖼️  [list/open/save/leave]: '
+      '\n🖼️  [list/open/save/undo/leave]: '
     )) as string;
     const command = input.trim().toLowerCase();
 
     if (command === 'leave' || command === 'l') {
       console.log('📤 Leaving image mode...');
       break;
+    }
+
+    if (command === 'undo' || command === 'u') {
+      try {
+        if (state.savedImageCount === 0) {
+          console.log('⚠️ Nothing to undo. No images have been saved yet.');
+          continue;
+        }
+
+        // Get the metadata file path for the last saved image
+        const lastImageCount = state.savedImageCount - 1;
+        const paddedNumber = padNumber(lastImageCount);
+        const metaFilename = `${paddedNumber}.txt`;
+        const metaFilepath = path.join(state.imgMetaDir, metaFilename);
+
+        // Read the metadata file
+        try {
+          const metaContent = await fs.readFile(metaFilepath, 'utf8');
+          const lines = metaContent.split('\n');
+
+          if (lines.length < 2) {
+            console.log('⚠️ Invalid metadata file format.');
+            continue;
+          }
+
+          // Parse the second line to get the image filename
+          const imagePath = lines[1].trim(); // e.g., "images/0000000010.jpg"
+          const imageFilename = imagePath.split('/')[1]; // e.g., "0000000010.jpg"
+          const imageFilepath = path.join(state.imagesDir, imageFilename);
+
+          // Delete the image file
+          try {
+            await fs.unlink(imageFilepath);
+            console.log(`✅ Deleted image: images/${imageFilename}`);
+          } catch (error) {
+            console.log(`⚠️ Image file ${imageFilename} not found.`);
+          }
+
+          // Delete the metadata file
+          await fs.unlink(metaFilepath);
+          console.log(`✅ Deleted metadata: img-meta/${metaFilename}`);
+
+          // Decrement the counter
+          state.savedImageCount--;
+          console.log(`✅ Undone: Image count is now ${state.savedImageCount}`);
+        } catch (error) {
+          console.log('⚠️ Metadata file not found. Nothing to undo.');
+        }
+      } catch (error) {
+        console.error('❌ Error during undo:', error);
+      }
+      continue;
     }
 
     if (command === 'list') {
