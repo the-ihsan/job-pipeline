@@ -39,6 +39,10 @@ export async function initCopyModePage(page: Page): Promise<void> {
       }
       // @ts-ignore
       window.__copyClickHandler = (e: MouseEvent) => {
+        // @ts-ignore
+        if (!window.__isCopyMode) {
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
 
@@ -100,6 +104,15 @@ export async function handleCopyMode(state: JobState): Promise<boolean> {
     console.log('❌ No active page found');
     return false;
   }
+
+  await page.evaluate(() => {
+    // @ts-ignore
+    if (!window.__isCopyMode) {
+      console.log('🔍 Entering copy mode...');
+      // @ts-ignore
+      window.__isCopyMode = true;
+    }
+  });
 
   currentAncestors = [];
   currentCopiedText = '';
@@ -213,6 +226,10 @@ export async function handleCopyMode(state: JobState): Promise<boolean> {
       '❓ Unknown command. Use: save, pick <n>, trim <start> <end>, list, view, or leave'
     );
   }
+  await page.evaluate(() => {
+    // @ts-ignore
+    window.__isCopyMode = false;
+  });
 
   return shouldSave;
 }
