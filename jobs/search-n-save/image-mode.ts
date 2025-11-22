@@ -10,52 +10,60 @@ import type { JobState } from './state.ts';
 import { getActiveTab } from './tab-ctrl.ts';
 import type { Page } from 'playwright';
 
-
 export async function initializeImageMode(state: JobState): Promise<void> {
-  await state.context.exposeBinding('saveImage', async (source, src: string) => {
-    if (!state.isImageMode || state.isImageSaving) {
-      return;
+  await state.context.exposeBinding(
+    'saveImage',
+    async (source, src: string) => {
+      if (!state.isImageMode || state.isImageSaving) {
+        return;
+      }
+      state.isImageSaving = true;
+      state.savedImageCount = await processImageDownload(
+        state,
+        src,
+        source.page.url()
+      );
+      state.isImageSaving = false;
     }
-    state.isImageSaving = true;
-    state.savedImageCount = await processImageDownload(state, src, source.page.url());
-    state.isImageSaving = false;
-  });
+  );
 }
-
 
 export async function initImageModePage(page: Page): Promise<void> {
   // Inject click handler
-  await page.evaluate(() => {
-    // @ts-ignore
-    if (window.__imageClickHandler) {
-      return;
-    }
-    // @ts-ignore
-    window.__imageClickHandler = (e: MouseEvent) => {
+  try {
+    await page.evaluate(() => {
       // @ts-ignore
-      let target = e.target as HTMLElement;
-
-      // Check if target is an image
-      if (target.tagName === 'IMG') {
-        // @ts-ignore
-        saveImage((target as HTMLImageElement).src);
+      if (window.__imageClickHandler) {
         return;
       }
-    };
+      // @ts-ignore
+      window.__imageClickHandler = (e: MouseEvent) => {
+        // @ts-ignore
+        let target = e.target as HTMLElement;
 
-    // @ts-ignore
-    document.addEventListener('click', window.__imageClickHandler);
-  });
+        // Check if target is an image
+        if (target.tagName === 'IMG') {
+          e.preventDefault();
+          // @ts-ignore
+          saveImage((target as HTMLImageElement).src);
+          return;
+        }
+      };
 
+      // @ts-ignore
+      document.addEventListener('click', window.__imageClickHandler);
+    });
+  } catch (error: any) {
+    console.error('Failed to initialize image mode:', error.message || error);
+  }
 }
 
 export async function handleImageMode(state: JobState): Promise<void> {
-
   console.log('\n🖼️  Entering Image Mode...');
   console.log('Click on an image in the browser, or use sub-commands:');
   console.log('  list - List all images on the page');
   console.log('  open <number> - Open indexed image in new tab');
-  console.log('  img <number> - Download indexed image');
+  console.log('  save <number> - Download indexed image');
   console.log('  undo - Undo last saved image');
   console.log('  leave - Exit image mode');
 
@@ -66,10 +74,10 @@ export async function handleImageMode(state: JobState): Promise<void> {
   }
 
   const pageUrl = page.url();
-  
+
   while (true) {
     const input = (await waitForInput(
-      '\n🖼️  [list/open/save/undo/leave]: '
+      '\n🖼️  [list/open/save <n>/undo/leave]: '
     )) as string;
     const command = input.trim().toLowerCase();
 
@@ -170,8 +178,8 @@ export async function handleImageMode(state: JobState): Promise<void> {
         } else {
           console.log(`❌ Image ${index} not found`);
         }
-      } catch (error) {
-        console.error('❌ Error opening image:', error);
+      } catch (error: any) {
+        console.error('❌ Error opening image:', error.message || error);
       }
       continue;
     }
@@ -194,8 +202,8 @@ export async function handleImageMode(state: JobState): Promise<void> {
           imgSrc,
           pageUrl
         );
-      } catch (error) {
-        console.error('❌ Error downloading image:', error);
+      } catch (error: any) {
+        console.error('❌ Error downloading image:', error.message || error);
       }
       continue;
     }
@@ -255,8 +263,8 @@ async function processImageDownload(
 
     clipboard.writeSync('');
     return currentImageCount + 1;
-  } catch (error) {
-    console.error('❌ Error downloading image:', error);
+  } catch (error: any) {
+    console.error('❌ Error downloading image:', error.message || error);
     return currentImageCount;
   }
 }
