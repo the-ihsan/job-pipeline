@@ -7,6 +7,7 @@ import { getManualFilePath, padNumber } from './utils.ts';
 import { getActiveTabUrl } from './tab-ctrl.ts';
 
 import { handleImageMode } from './image-mode.ts';
+import { handleCopyMode } from './copy-mode.ts';
 import path from 'path';
 
 export default async function main() {
@@ -139,6 +140,63 @@ export default async function main() {
         }
         state.isImageMode = false;
         continue;
+      } else if (command === 'copy' || command === 'cp') {
+        state.isCopyMode = true;
+        try {
+          const shouldSave = await handleCopyMode(state);
+          state.isCopyMode = false;
+          
+          if (shouldSave) {
+            // Automatically trigger save operation
+            console.log('\n💾 Starting save operation...');
+            
+            const currentUrl = await getActiveTabUrl(state);
+            
+            if (state.savedLinks.has(currentUrl)) {
+              console.log(
+                '⚠️  Duplicate link detected! This URL was already saved. Skipping...'
+              );
+              continue;
+            }
+
+            const clipboardContent = clipboard.readSync();
+
+            if (!clipboardContent || clipboardContent.trim() === '') {
+              console.log('⚠️ Clipboard is empty. Nothing to save.');
+              continue;
+            }
+
+            // Safety check: verify file doesn't already exist
+            let paddedNumber = padNumber(state.savedLinkCount);
+            let filename = `result-${paddedNumber}.txt`;
+            let outputFilePath = path.join(state.dataDir, filename);
+
+            [outputFilePath, state.savedLinkCount] =
+              await getManualFilePath(outputFilePath);
+
+            const content = `# ${state.savedLinkCount}: ${currentUrl}\n\n${clipboardContent}`;
+
+            // Save to data directory
+            await fs.writeFile(outputFilePath, content, 'utf8');
+
+            const linksFilePath = getOutputPath('links.txt');
+            await fs.appendFile(linksFilePath, `${currentUrl}\n`, 'utf8');
+
+            state.savedLinks.add(currentUrl);
+
+            const overview = clipboardContent.slice(0, 50);
+
+            console.log(`✅ ${state.savedLinkCount}: ${currentUrl}\n`);
+            console.log(`   ${overview}`);
+            state.savedLinkCount++;
+
+            clipboard.writeSync('');
+          }
+        } catch (error) {
+          console.error('❌ Error in copy mode:', error);
+          state.isCopyMode = false;
+        }
+        continue;
       } else if (command === 'check' || command === 'c') {
         try {
           const currentUrl = await getActiveTabUrl(state);
@@ -199,7 +257,7 @@ export default async function main() {
         }
       } else {
         console.log(
-          '❓ Unknown command. Use: next (n), prev (p), check (c), view (v), img (i), save (s), undo (u), or exit (e)'
+          '❓ Unknown command. Use: next (n), prev (p), check (c), view (v), copy (cp), img (i), save (s), undo (u), or exit (e)'
         );
       }
     }

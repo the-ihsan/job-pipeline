@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import { connectToBrowser } from '../../utils/browser.ts';
 import { spawn } from 'child_process';
 import { initializeImageMode, initImageModePage } from './image-mode.ts';
+import { initializeCopyMode, initCopyModePage } from './copy-mode.ts';
 
 export interface JobState {
   savedLinkCount: number;
@@ -24,6 +25,7 @@ export interface JobState {
 
   isImageMode: boolean;
   isImageSaving: boolean;
+  isCopyMode: boolean;
 }
 
 export async function initializeState(): Promise<JobState> {
@@ -54,13 +56,13 @@ export async function initializeState(): Promise<JobState> {
   await fs.mkdir(imgMetaDir, { recursive: true });
   await fs.mkdir(browserSessionDir, { recursive: true });
 
-  let cmdHint = `💬 Command [next/prev/save/check/view/img/undo/exit]: `;
+  let cmdHint = `💬 Command [next/prev/save/check/view/copy/img/undo/exit]: `;
 
   let inputLinks: string[] = [];
   try {
     inputLinks = await readLinesFromFile(linksPath);
   } catch (_) {
-    cmdHint = `💬 Command [save/check/view/img/undo/exit]: `;
+    cmdHint = `💬 Command [save/check/view/copy/img/undo/exit]: `;
   }
 
   // Load existing saved links
@@ -89,6 +91,7 @@ export async function initializeState(): Promise<JobState> {
     activeTabIndex: 0,
     isImageMode: false,
     isImageSaving: false,
+    isCopyMode: false,
   };
 
   await context.exposeBinding('mainLog', async (source, ...args) => {
@@ -110,6 +113,7 @@ export async function initializeState(): Promise<JobState> {
   });
 
   await initializeImageMode(state);
+  await initializeCopyMode(state);
 
   const tabs = context.pages();
   for (const tab of tabs) {
@@ -244,6 +248,7 @@ export async function getLastResultFileNumber(
 async function initializePage(state: JobState, page: Page) {
   const init = async () => {
     await initImageModePage(page);
+    await initCopyModePage(page);
     await page.evaluate(() => {
       // @ts-ignore
       if (window.__focusHelperRegistered) {
