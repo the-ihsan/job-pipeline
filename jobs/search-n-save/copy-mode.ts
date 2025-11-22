@@ -55,16 +55,12 @@ export async function initCopyModePage(page: Page): Promise<void> {
             node.remove();
           });
           const textContent = (clone.textContent || '').replace(/\s+/g, ' ').trim();
-          let textPreview = textContent
-            .slice(0, 100)
-            .replace(/\s+/g, ' ')
-            .trim();
-
-          if (textContent.length > 100) {
-            textPreview += '...';
-            textPreview += textContent.slice(
-              Math.max(100, textContent.length - 100)
-            );
+          
+          let textPreview = textContent;
+          if (textContent.length > 200) {
+            const beginning = textContent.slice(0, 100);
+            const end = textContent.slice(Math.max(100, textContent.length - 100));
+            textPreview = `${beginning}...${end}`;
           }
 
           ancestors.push({
@@ -122,7 +118,7 @@ export async function handleCopyMode(state: JobState): Promise<boolean> {
     }
 
     if (command === 'save' || command === 's') {
-      if (!currentCopiedText || currentCopiedText.trim() === '') {
+      if (!hasValidText(currentCopiedText)) {
         console.log('⚠️ No text has been copied yet. Use "pick <n>" first.');
         continue;
       }
@@ -144,15 +140,13 @@ export async function handleCopyMode(state: JobState): Promise<boolean> {
     }
 
     if (command === 'view' || command === 'v') {
-      if (!currentCopiedText || currentCopiedText.trim() === '') {
+      if (!hasValidText(currentCopiedText)) {
         console.log('⚠️ No text has been copied yet.');
       } else {
         console.log(
           `\n📄 Current copied text (${currentCopiedText.length} chars):`
         );
-        const preview = currentCopiedText.slice(0, 500);
-        const suffix = currentCopiedText.length > 500 ? '...' : '';
-        console.log(`${preview}${suffix}`);
+        showTextPreview(currentCopiedText, 500);
       }
       continue;
     }
@@ -181,17 +175,12 @@ export async function handleCopyMode(state: JobState): Promise<boolean> {
       console.log(
         `✅ Copied ${currentCopiedText.length} characters from [${index}]`
       );
-      const preview = currentCopiedText
-        .slice(0, 200)
-        .replace(/\s+/g, ' ')
-        .trim();
-      const suffix = currentCopiedText.length > 200 ? '...' : '';
-      console.log(`   Preview: ${preview}${suffix}`);
+      showTextPreview(currentCopiedText);
       continue;
     }
 
     if (parts[0] === 'trim' || parts[0] === 't') {
-      if (!currentCopiedText || currentCopiedText.trim() === '') {
+      if (!hasValidText(currentCopiedText)) {
         console.log('⚠️ No text to trim. Use "pick <n>" first.');
         continue;
       }
@@ -213,12 +202,7 @@ export async function handleCopyMode(state: JobState): Promise<boolean> {
       try {
         currentCopiedText = trimText(currentCopiedText, start, end);
         console.log(`✅ Trimmed to ${currentCopiedText.length} characters`);
-        const preview = currentCopiedText
-          .slice(0, 200)
-          .replace(/\s+/g, ' ')
-          .trim();
-        const suffix = currentCopiedText.length > 200 ? '...' : '';
-        console.log(`   Preview: ${preview}${suffix}`);
+        showTextPreview(currentCopiedText);
       } catch (error: any) {
         console.error('❌ Error trimming text:', error.message || error);
       }
@@ -241,6 +225,28 @@ function displayAncestors(ancestors: AncestorInfo[]): void {
     console.log(`  [${ancestor.index}] - ${textLen} chars`);
     console.log(`      ${ancestor.textPreview}`);
   });
+}
+
+function showTextPreview(
+  text: string,
+  maxLength: number = 200,
+): void {
+  const normalizedText = text.replace(/\s+/g, ' ').trim();
+  
+  if (normalizedText.length <= maxLength) {
+    console.log(`   ${normalizedText}`);
+    return;
+  }
+  
+  const halfLength = Math.floor(maxLength / 2);
+  const beginning = normalizedText.slice(0, halfLength);
+  const end = normalizedText.slice(Math.max(halfLength, normalizedText.length - halfLength));
+  
+  console.log(`   ${beginning}...${end}`);
+}
+
+function hasValidText(text: string): boolean {
+  return !!text && text.trim() !== '';
 }
 
 function trimText(text: string, start: string, end?: string): string {
